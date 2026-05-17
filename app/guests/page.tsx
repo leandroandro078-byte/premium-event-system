@@ -33,7 +33,7 @@ export default function GuestsPage() {
 
   // LINK NGROK
   const BASE_URL =
-    "https://attractor-desecrate-sanction.ngrok-free.dev"
+    "https://premium-event-system.vercel.app"
 
   useEffect(() => {
     loadEvents()

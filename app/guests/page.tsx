@@ -43,7 +43,7 @@ export default function GuestsPage() {
 
   // URL
   const BASE_URL =
-    "http://https://premium-event-system.vercel.app"
+    "https://premium-event-system.vercel.app"
 
   // LOAD
   useEffect(() => {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import QRCode from "qrcode"
+
 
 export default function TicketPage() {
 
@@ -15,9 +15,7 @@ export default function TicketPage() {
   const [loading, setLoading] =
     useState(true)
 
-  const [qrImage, setQrImage] =
-    useState("")
-
+ 
   // LOAD
   useEffect(() => {
 
@@ -55,13 +53,9 @@ export default function TicketPage() {
       setGuest(data)
 
       // GENERATE QR IMAGE
-      const qr =
-        await QRCode.toDataURL(
-          data.qr_code
-        )
 
-      setQrImage(qr)
-
+    
+    
       setLoading(false)
 
     } catch (err) {
@@ -79,7 +73,7 @@ export default function TicketPage() {
       document.createElement("a")
 
     link.href =
-      qrImage
+      guest.qr_code
 
     link.download =
       "ticket-qr.png"
@@ -212,12 +206,14 @@ export default function TicketPage() {
 
             <div className="bg-white p-5 rounded-[40px]">
 
-              <img
-                src={qrImage}
-                alt="QR"
-                className="w-72 lg:w-96"
-              />
+            
+                <img
+                  src={guest.qr_code}
+                  alt="QR"
+                  className="w-72 lg:w-96"
+                 />
 
+            
             </div>
 
             <button

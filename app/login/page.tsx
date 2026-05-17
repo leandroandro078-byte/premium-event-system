@@ -1,113 +1,118 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { supabaseAuth } from "@/lib/auth"
 
 export default function LoginPage() {
   const router = useRouter()
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [email, setEmail] =
+    useState("")
 
-  async function handleLogin(
-    e: React.FormEvent
-  ) {
-    e.preventDefault()
+  const [password, setPassword] =
+    useState("")
 
+  const [loading, setLoading] =
+    useState(false)
+
+  async function handleLogin() {
     setLoading(true)
-    setError('')
 
-    try {
-      const { data, error } =
-        await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
+    const { data, error } =
+      await supabaseAuth.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-      console.log(data)
-      console.log(error)
-
-      if (error) {
-        setError(error.message)
-        setLoading(false)
-        return
-      }
-
-      router.push('/dashboard')
-    } catch (err) {
-      console.log(err)
-      setError('Erro ao fazer login')
+    if (error) {
+      alert(error.message)
+      setLoading(false)
+      return
     }
 
-    setLoading(false)
+    // SALVAR SESSÃO
+    localStorage.setItem(
+      "admin-auth",
+      "true"
+    )
+
+    console.log(data)
+
+    router.push("/dashboard")
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-4">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl">
+    <div className="min-h-screen bg-black flex items-center justify-center p-6">
+      <div className="bg-[#18181b] border border-zinc-700 rounded-3xl p-10 w-full max-w-md shadow-2xl">
+        
+        {/* LOGO */}
+        <div className="mb-10">
+          <p className="text-green-400 tracking-[8px] font-bold">
+            PREMIUM EVENTS
+          </p>
 
-        <h1 className="mb-2 text-center text-4xl font-bold text-white">
-          Admin Login
-        </h1>
+          <h1 className="text-5xl font-black text-white mt-4">
+            Admin Login
+          </h1>
 
-        <p className="mb-8 text-center text-zinc-400">
-          Sistema Premium de Eventos
-        </p>
+          <p className="text-zinc-400 mt-3">
+            Sistema Profissional de Gestão de Eventos
+          </p>
+        </div>
 
-        <form
-          onSubmit={handleLogin}
-          className="space-y-4"
+        {/* EMAIL */}
+        <div>
+          <label className="text-zinc-400 text-sm">
+            EMAIL
+          </label>
+
+          <input
+            type="email"
+            placeholder="admin@premiumevents.com"
+            value={email}
+            onChange={(e) =>
+              setEmail(e.target.value)
+            }
+            className="w-full bg-black border border-zinc-700 rounded-2xl p-4 mt-2 text-white outline-none focus:border-green-500"
+          />
+        </div>
+
+        {/* PASSWORD */}
+        <div className="mt-6">
+          <label className="text-zinc-400 text-sm">
+            PASSWORD
+          </label>
+
+          <input
+            type="password"
+            placeholder="********"
+            value={password}
+            onChange={(e) =>
+              setPassword(e.target.value)
+            }
+            className="w-full bg-black border border-zinc-700 rounded-2xl p-4 mt-2 text-white outline-none focus:border-green-500"
+          />
+        </div>
+
+        {/* BUTTON */}
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          className="w-full bg-green-500 hover:bg-green-600 transition-all rounded-2xl p-4 mt-8 text-black font-black text-xl"
         >
-          <div>
-            <label className="mb-2 block text-sm text-zinc-300">
-              Email
-            </label>
+          {loading
+            ? "ENTRANDO..."
+            : "ENTRAR"}
+        </button>
 
-            <input
-              type="email"
-              value={email}
-              onChange={(e) =>
-                setEmail(e.target.value)
-              }
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-zinc-300">
-              Password
-            </label>
-
-            <input
-              type="password"
-              value={password}
-              onChange={(e) =>
-                setPassword(e.target.value)
-              }
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none"
-            />
-          </div>
-
-          {error && (
-            <p className="text-red-500">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-green-500 py-3 font-bold text-black"
-          >
-            {loading
-              ? 'Entrando...'
-              : 'Entrar'}
-          </button>
-        </form>
+        {/* FOOTER */}
+        <div className="mt-8 text-center">
+          <p className="text-zinc-500 text-sm">
+            Premium Event System © 2026
+          </p>
+        </div>
       </div>
-    </main>
+    </div>
   )
 }

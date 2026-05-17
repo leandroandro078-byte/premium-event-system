@@ -1,375 +1,811 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+
 import QRCode from "qrcode"
 
+import {
+  Pencil,
+  Trash2,
+  X,
+  ExternalLink,
+  Copy,
+} from "lucide-react"
+
+import { FaWhatsapp } from "react-icons/fa"
+
 export default function GuestsPage() {
-  const [events, setEvents] = useState<any[]>([])
+
+  const router = useRouter()
+
+  // EVENT
   const [selectedEvent, setSelectedEvent] =
     useState<any>(null)
 
-  const [fullName, setFullName] =
+  // GUESTS
+  const [guests, setGuests] =
+    useState<any[]>([])
+
+  const [loading, setLoading] =
+    useState(true)
+
+  const [search, setSearch] =
     useState("")
 
-  const [email, setEmail] = useState("")
-
-  const [phone, setPhone] = useState("")
-
-  const [ticketType, setTicketType] =
-    useState("NORMAL")
-
-  const [qrImage, setQrImage] =
-    useState("")
-
-  const [qrValue, setQrValue] =
-    useState("")
-
-  const [ticketToken, setTicketToken] =
-    useState("")
-
-  const [ticketReady, setTicketReady] =
+  // MODAL
+  const [editOpen, setEditOpen] =
     useState(false)
 
-  // LINK NGROK
+  const [editingGuest, setEditingGuest] =
+    useState<any>(null)
+
+  // URL
   const BASE_URL =
-    "https://premium-event-system.vercel.app"
+    "http://https://premium-event-system.vercel.app"
 
+  // LOAD
   useEffect(() => {
-    loadEvents()
-  }, [])
 
-  async function loadEvents() {
-    const { data } = await supabase
-      .from("Eventos")
-      .select("*")
-
-    if (data) {
-      setEvents(data)
-    }
-  }
-
-  async function createGuest() {
-    if (
-      !selectedEvent ||
-      !fullName ||
-      !email
-    ) {
-      alert("Preencha todos os campos")
-      return
-    }
-
-    // QR CODE VALUE
-    const generatedQR =
-      `${fullName}-${Date.now()}`
-
-    // TOKEN ÚNICO
-    const token =
-      crypto.randomUUID()
-
-    // SALVAR TOKEN
-    setTicketToken(token)
-
-    // BACKUP TOKEN
-    localStorage.setItem(
-      "last_ticket_token",
-      token
-    )
-
-    setQrValue(generatedQR)
-
-    // GERAR QR
-    const qrData =
-      await QRCode.toDataURL(
-        generatedQR
+    const auth =
+      localStorage.getItem(
+        "admin-auth"
       )
 
-    setQrImage(qrData)
+    if (!auth) {
 
-    // SALVAR NO SUPABASE
-    const { error } = await supabase
-      .from("Convidados")
-      .insert([
-        {
-          event_id: selectedEvent.id,
-          event_name:
-            selectedEvent.title,
-          full_name: fullName,
-          email,
-          phone,
-          ticket_type: ticketType,
-          qr_code: generatedQR,
-          ticket_token: token,
-          checked_in: false,
-          status: "ativo",
-        },
-      ])
+      router.push("/login")
 
-    if (error) {
-      console.log(error)
-
-      alert(error.message)
       return
     }
 
-    setTicketReady(true)
+    const selectedEventId =
+      localStorage.getItem(
+        "selected-event-id"
+      )
+
+    const selectedEventName =
+      localStorage.getItem(
+        "selected-event-name"
+      )
+
+    if (
+      selectedEventId &&
+      selectedEventName
+    ) {
+
+      setSelectedEvent({
+        id: selectedEventId,
+        title:
+          selectedEventName,
+      })
+    }
+
+    loadGuests()
+
+  }, [])
+
+  // LOAD GUESTS
+  async function loadGuests() {
+
+    try {
+
+      const selectedEventId =
+        localStorage.getItem(
+          "selected-event-id"
+        )
+
+      let query =
+        supabase
+          .from("Convidados")
+          .select("*")
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          )
+
+      if (selectedEventId) {
+
+        query =
+          query.eq(
+            "event_id",
+            selectedEventId
+          )
+      }
+
+      const {
+        data,
+        error,
+      } = await query
+
+      if (error) {
+
+        console.log(error)
+
+        return
+      }
+
+      setGuests(data || [])
+
+      setLoading(false)
+
+    } catch (err) {
+
+      console.log(err)
+    }
+  }
+
+  // DELETE
+  async function deleteGuest(
+    id: string
+  ) {
+
+    const confirmDelete =
+      confirm(
+        "Eliminar convidado?"
+      )
+
+    if (!confirmDelete) return
+
+    const { error } =
+      await supabase
+        .from("Convidados")
+        .delete()
+        .eq("id", id)
+
+    if (error) {
+
+      console.log(error)
+
+      return
+    }
 
     alert(
-      "✅ CONVIDADO CRIADO COM SUCESSO"
+      "✅ Convidado removido"
+    )
+
+    loadGuests()
+  }
+
+  // OPEN EDIT
+  function openEdit(
+    guest: any
+  ) {
+
+    setEditingGuest(guest)
+
+    setEditOpen(true)
+  }
+
+  // CREATE / UPDATE
+  async function updateGuest() {
+
+    if (!editingGuest) return
+
+    // CREATE
+    if (editingGuest.isNew) {
+
+      const token =
+        crypto.randomUUID()
+
+      const ticketLink =
+        `${BASE_URL}/ticket/${token}`
+
+      const qrImage =
+        await QRCode.toDataURL(
+          ticketLink
+        )
+
+      const { error } =
+        await supabase
+          .from("Convidados")
+          .insert([
+            {
+              event_id:
+                selectedEvent.id,
+
+              event_name:
+                selectedEvent.title,
+
+              full_name:
+                editingGuest.full_name,
+
+              email:
+                editingGuest.email,
+
+              phone:
+                editingGuest.phone,
+
+              ticket_type:
+                editingGuest.ticket_type,
+
+              qr_code:
+                qrImage,
+
+              ticket_token:
+                token,
+
+              checked_in: false,
+
+              status: "ativo",
+            },
+          ])
+
+      if (error) {
+
+        console.log(error)
+
+        alert(error.message)
+
+        return
+      }
+
+      alert(
+        "✅ Ticket criado automaticamente"
+      )
+
+    } else {
+
+      // UPDATE
+      const { error } =
+        await supabase
+          .from("Convidados")
+          .update({
+            full_name:
+              editingGuest.full_name,
+
+            email:
+              editingGuest.email,
+
+            phone:
+              editingGuest.phone,
+
+            ticket_type:
+              editingGuest.ticket_type,
+          })
+          .eq(
+            "id",
+            editingGuest.id
+          )
+
+      if (error) {
+
+        console.log(error)
+
+        alert(error.message)
+
+        return
+      }
+
+      alert(
+        "✅ Convidado atualizado"
+      )
+    }
+
+    setEditOpen(false)
+
+    loadGuests()
+  }
+
+  // COPY LINK
+  async function copyTicketLink(
+    token: string
+  ) {
+
+    const link =
+      `${BASE_URL}/ticket/${token}`
+
+    await navigator.clipboard.writeText(
+      link
+    )
+
+    alert(
+      "✅ Link copiado"
     )
   }
 
-  // DOWNLOAD QR
-  function downloadQRCode() {
-    const link =
-      document.createElement("a")
+  // OPEN TICKET
+  function openTicket(
+    token: string
+  ) {
 
-    link.href = qrImage
-
-    link.download =
-      `${fullName}-QR.png`
-
-    link.click()
+    window.open(
+      `${BASE_URL}/ticket/${token}`,
+      "_blank"
+    )
   }
 
   // WHATSAPP
-  function sendWhatsApp() {
-    const finalToken =
-      ticketToken ||
-      localStorage.getItem(
-        "last_ticket_token"
-      )
+  function sendWhatsApp(
+    guest: any
+  ) {
 
-    const ticketLink =
-      `${BASE_URL}/ticket/${finalToken}`
+    const link =
+      `${BASE_URL}/ticket/${guest.ticket_token}`
 
     const message =
 `🎟️ BILHETE PREMIUM
 
-Evento: ${selectedEvent?.title}
+Evento:
+${guest.event_name}
 
-Convidado: ${fullName}
+Convidado:
+${guest.full_name}
 
-Tipo: ${ticketType}
+Tipo:
+${guest.ticket_type}
 
-====================
+LINK:
+${link}`
 
-LINK DO BILHETE:
+    const phone =
+      guest.phone
+        ?.replace(/\D/g, "")
 
-${ticketLink}
+    window.open(
+      `https://wa.me/244${phone}?text=${encodeURIComponent(message)}`,
+      "_blank"
+    )
+  }
 
-====================
+  // FILTER
+  const filteredGuests =
+    useMemo(() => {
 
-Apresente este QR na entrada.`
+      return guests.filter(
+        (guest) =>
 
-    // LIMPAR TELEFONE
-    const phoneFormatted =
-      phone.replace(/\D/g, "")
+          guest.full_name
+            ?.toLowerCase()
+            .includes(
+              search.toLowerCase()
+            ) ||
 
-    // URL WHATSAPP
-    const url =
-      `https://wa.me/244${phoneFormatted}?text=${encodeURIComponent(message)}`
+          guest.email
+            ?.toLowerCase()
+            .includes(
+              search.toLowerCase()
+            )
+      )
 
-    window.open(url, "_blank")
+    }, [guests, search])
+
+  // LOADING
+  if (loading) {
+
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+
+        <h1 className="text-5xl font-black">
+          Carregando...
+        </h1>
+
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-10">
-      <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-10">
-        {/* FORMULÁRIO */}
-        <div className="bg-[#18181b] border border-zinc-800 p-8 rounded-3xl">
-          <h1 className="text-5xl font-black mb-8">
-            Novo Convidado
+    <div className="min-h-screen bg-black text-white p-5 lg:p-10">
+
+      {/* MODAL */}
+      {editOpen && editingGuest && (
+
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-5">
+
+          <div className="bg-[#18181b] border border-zinc-800 rounded-3xl w-full max-w-2xl p-8">
+
+            <div className="flex items-center justify-between">
+
+              <h2 className="text-3xl font-black">
+
+                {
+                  editingGuest.isNew
+                    ? "Novo Convidado"
+                    : "Editar Convidado"
+                }
+
+              </h2>
+
+              <button
+                onClick={() =>
+                  setEditOpen(false)
+                }
+              >
+                <X size={32} />
+              </button>
+
+            </div>
+
+            {/* FORM */}
+            <div className="space-y-5 mt-8">
+
+              <input
+                type="text"
+                placeholder="Nome Completo"
+                value={
+                  editingGuest.full_name
+                }
+                onChange={(e) =>
+                  setEditingGuest({
+                    ...editingGuest,
+                    full_name:
+                      e.target.value,
+                  })
+                }
+                className="w-full bg-black border border-zinc-700 rounded-2xl p-5"
+              />
+
+              <input
+                type="email"
+                placeholder="Email"
+                value={
+                  editingGuest.email
+                }
+                onChange={(e) =>
+                  setEditingGuest({
+                    ...editingGuest,
+                    email:
+                      e.target.value,
+                  })
+                }
+                className="w-full bg-black border border-zinc-700 rounded-2xl p-5"
+              />
+
+              <input
+                type="text"
+                placeholder="Telefone"
+                value={
+                  editingGuest.phone
+                }
+                onChange={(e) =>
+                  setEditingGuest({
+                    ...editingGuest,
+                    phone:
+                      e.target.value,
+                  })
+                }
+                className="w-full bg-black border border-zinc-700 rounded-2xl p-5"
+              />
+
+              <select
+                value={
+                  editingGuest.ticket_type
+                }
+                onChange={(e) =>
+                  setEditingGuest({
+                    ...editingGuest,
+                    ticket_type:
+                      e.target.value,
+                  })
+                }
+                className="w-full bg-black border border-zinc-700 rounded-2xl p-5"
+              >
+
+                <option value="NORMAL">
+                  NORMAL
+                </option>
+
+                <option value="VIP">
+                  VIP
+                </option>
+
+                <option value="STAFF">
+                  STAFF
+                </option>
+
+              </select>
+
+            </div>
+
+            {/* BUTTONS */}
+            <div className="grid grid-cols-2 gap-5 mt-8">
+
+              <button
+                onClick={() =>
+                  setEditOpen(false)
+                }
+                className="bg-zinc-700 hover:bg-zinc-600 transition rounded-2xl p-5 font-bold"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={updateGuest}
+                className="bg-green-500 hover:bg-green-600 transition rounded-2xl p-5 font-black text-black"
+              >
+                {
+                  editingGuest.isNew
+                    ? "Criar"
+                    : "Salvar"
+                }
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+
+        <div>
+
+          <p className="text-green-400 tracking-[8px] font-bold text-sm">
+            PREMIUM EVENTS
+          </p>
+
+          <h1 className="text-4xl lg:text-6xl font-black mt-4">
+            Convidados
           </h1>
 
-          {/* EVENTOS */}
-          <select
-            onChange={(e) => {
-              const event =
-                events.find(
-                  (ev) =>
-                    ev.id ===
-                    e.target.value
-                )
+          <p className="text-zinc-400 mt-3">
+            Gestão Profissional de Convidados
+          </p>
 
-              setSelectedEvent(event)
-            }}
-            className="w-full bg-zinc-800 p-5 rounded-xl mb-4"
-          >
-            <option>
-              Selecione Evento
-            </option>
-
-            {events.map((event) => (
-              <option
-                key={event.id}
-                value={event.id}
-              >
-                {event.title}
-              </option>
-            ))}
-          </select>
-
-          {/* NOME */}
-          <input
-            type="text"
-            placeholder="Nome Completo"
-            value={fullName}
-            onChange={(e) =>
-              setFullName(
-                e.target.value
-              )
-            }
-            className="w-full bg-zinc-800 p-5 rounded-xl mb-4"
-          />
-
-          {/* EMAIL */}
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) =>
-              setEmail(
-                e.target.value
-              )
-            }
-            className="w-full bg-zinc-800 p-5 rounded-xl mb-4"
-          />
-
-          {/* TELEFONE */}
-          <input
-            type="text"
-            placeholder="Telefone"
-            value={phone}
-            onChange={(e) =>
-              setPhone(
-                e.target.value
-              )
-            }
-            className="w-full bg-zinc-800 p-5 rounded-xl mb-4"
-          />
-
-          {/* TIPO */}
-          <select
-            value={ticketType}
-            onChange={(e) =>
-              setTicketType(
-                e.target.value
-              )
-            }
-            className="w-full bg-zinc-800 p-5 rounded-xl mb-8"
-          >
-            <option value="NORMAL">
-              NORMAL
-            </option>
-
-            <option value="VIP">
-              VIP
-            </option>
-
-            <option value="STAFF">
-              STAFF
-            </option>
-          </select>
-
-          {/* BOTÃO */}
-          <button
-            onClick={createGuest}
-            className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-black font-bold p-5 rounded-xl text-xl"
-          >
-            Criar Bilhete
-          </button>
         </div>
 
-        {/* BILHETE */}
-        <div>
-          {ticketReady && (
-            <>
-              <div className="bg-[#18181b] border border-zinc-700 rounded-3xl p-10">
-                {/* HEADER */}
-                <p className="text-green-400 font-bold tracking-[5px]">
-                  EVENT PASS
-                </p>
+        <button
+          onClick={() =>
+            router.push(
+              "/dashboard"
+            )
+          }
+          className="bg-zinc-800 hover:bg-zinc-700 transition px-6 py-4 rounded-2xl font-bold"
+        >
+          ← Dashboard
+        </button>
 
-                <h2 className="text-5xl font-black mt-4">
-                  {selectedEvent?.title}
-                </h2>
-
-                {/* NOME */}
-                <div className="mt-10">
-                  <p className="text-zinc-400">
-                    CONVIDADO
-                  </p>
-
-                  <h3 className="text-3xl font-bold mt-2">
-                    {fullName}
-                  </h3>
-                </div>
-
-                {/* TIPO */}
-                <div className="mt-6">
-                  <p className="text-zinc-400">
-                    TIPO
-                  </p>
-
-                  <h3 className="text-2xl font-bold mt-2 text-green-400">
-                    {ticketType}
-                  </h3>
-                </div>
-
-                {/* QR */}
-                <div className="mt-10 bg-white p-4 rounded-2xl inline-block">
-                  <img
-                    src={qrImage}
-                    alt="QR"
-                    className="w-64"
-                  />
-                </div>
-
-                {/* CÓDIGO */}
-                <p className="mt-4 text-zinc-500 break-all">
-                  {qrValue}
-                </p>
-
-                {/* LINK */}
-                <div className="mt-6 bg-zinc-800 p-4 rounded-xl">
-                  <p className="text-sm text-zinc-400">
-                    LINK DO BILHETE
-                  </p>
-
-                  <a
-                    href={`${BASE_URL}/ticket/${ticketToken}`}
-                    target="_blank"
-                    className="break-all mt-2 text-green-400 block hover:underline"
-                  >
-                    {BASE_URL}/ticket/{ticketToken}
-                  </a>
-                </div>
-
-                <p className="mt-8 text-zinc-500">
-                  Sistema Premium de Eventos
-                </p>
-              </div>
-
-              {/* DOWNLOAD */}
-              <button
-                onClick={downloadQRCode}
-                className="w-full mt-6 bg-blue-500 hover:bg-blue-600 p-5 rounded-xl text-xl font-bold"
-              >
-                Download QR Code
-              </button>
-
-              {/* WHATSAPP */}
-              <button
-                onClick={sendWhatsApp}
-                className="w-full mt-4 bg-[#22c55e] hover:bg-[#16a34a] p-5 rounded-xl text-xl font-bold text-black"
-              >
-                Enviar WhatsApp
-              </button>
-            </>
-          )}
-        </div>
       </div>
+
+      {/* EVENT */}
+      <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-6 mt-10">
+
+        <p className="text-zinc-500">
+          EVENTO ATIVO
+        </p>
+
+        <h2 className="text-3xl font-black mt-3 text-green-400">
+
+          {
+            selectedEvent?.title
+          }
+
+        </h2>
+
+      </div>
+
+      {/* CREATE BUTTON */}
+      <div className="flex justify-end mt-8">
+
+        <button
+          onClick={() => {
+
+            setEditingGuest({
+              full_name: "",
+              email: "",
+              phone: "",
+              ticket_type: "NORMAL",
+              isNew: true,
+            })
+
+            setEditOpen(true)
+          }}
+          className="bg-green-500 hover:bg-green-600 transition px-8 py-5 rounded-2xl font-black text-black text-lg"
+        >
+          + Novo Convidado
+        </button>
+
+      </div>
+
+      {/* SEARCH */}
+      <div className="mt-8">
+
+        <input
+          type="text"
+          placeholder="Pesquisar convidado..."
+          value={search}
+          onChange={(e) =>
+            setSearch(
+              e.target.value
+            )
+          }
+          className="w-full bg-[#18181b] border border-zinc-800 rounded-2xl p-5"
+        />
+
+      </div>
+
+      {/* TABLE */}
+      <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-6 mt-8 overflow-x-auto">
+
+        <table className="w-full min-w-[1200px]">
+
+          <thead>
+
+            <tr className="border-b border-zinc-700">
+
+              <th className="text-left py-5">
+                Nome
+              </th>
+
+              <th className="text-left py-5">
+                Email
+              </th>
+
+              <th className="text-left py-5">
+                Tipo
+              </th>
+
+              <th className="text-left py-5">
+                Status
+              </th>
+
+              <th className="text-left py-5">
+                Check-in
+              </th>
+
+              <th className="text-left py-5">
+                Ticket
+              </th>
+
+              <th className="text-left py-5">
+                Ações
+              </th>
+
+            </tr>
+
+          </thead>
+
+          <tbody>
+
+            {filteredGuests.map(
+              (guest) => (
+
+                <tr
+                  key={guest.id}
+                  className="border-b border-zinc-800"
+                >
+
+                  <td className="py-5">
+                    {
+                      guest.full_name
+                    }
+                  </td>
+
+                  <td className="py-5">
+                    {guest.email}
+                  </td>
+
+                  <td className="py-5">
+
+                    <span className="bg-green-500 text-black px-4 py-2 rounded-xl font-bold">
+
+                      {
+                        guest.ticket_type
+                      }
+
+                    </span>
+
+                  </td>
+
+                  <td className="py-5">
+
+                    <span
+                      className={`
+                        px-4 py-2 rounded-xl font-bold
+
+                        ${
+                          guest.status ===
+                          "presente"
+                            ? "bg-green-500 text-black"
+                            : "bg-yellow-500 text-black"
+                        }
+                      `}
+                    >
+
+                      {guest.status}
+
+                    </span>
+
+                  </td>
+
+                  <td className="py-5">
+
+                    {
+                      guest.checked_in
+                        ? "✅"
+                        : "❌"
+                    }
+
+                  </td>
+
+                  {/* TICKET */}
+                  <td className="py-5">
+
+                    <div className="flex items-center gap-3">
+
+                      <button
+                        onClick={() =>
+                          openTicket(
+                            guest.ticket_token
+                          )
+                        }
+                        className="bg-green-500 hover:bg-green-600 transition p-3 rounded-xl text-black"
+                      >
+                        <ExternalLink size={18} />
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          copyTicketLink(
+                            guest.ticket_token
+                          )
+                        }
+                        className="bg-blue-500 hover:bg-blue-600 transition p-3 rounded-xl"
+                      >
+                        <Copy size={18} />
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          sendWhatsApp(
+                            guest
+                          )
+                        }
+                        className="bg-green-700 hover:bg-green-800 transition p-3 rounded-xl"
+                      >
+                        <FaWhatsapp size={18} />
+                      </button>
+
+                    </div>
+
+                  </td>
+
+                  {/* ACTIONS */}
+                  <td className="py-5">
+
+                    <div className="flex items-center gap-3">
+
+                      <button
+                        onClick={() =>
+                          openEdit(
+                            guest
+                          )
+                        }
+                        className="bg-blue-500 hover:bg-blue-600 transition p-3 rounded-xl"
+                      >
+                        <Pencil size={18} />
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          deleteGuest(
+                            guest.id
+                          )
+                        }
+                        className="bg-red-500 hover:bg-red-600 transition p-3 rounded-xl"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+
+                    </div>
+
+                  </td>
+
+                </tr>
+              )
+            )}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
     </div>
   )
 }

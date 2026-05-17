@@ -1,260 +1,392 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
 import { supabase } from "@/lib/supabase"
 
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
-
 export default function ReportsPage() {
-  const [guests, setGuests] = useState<any[]>([])
 
+  const router = useRouter()
+
+  const [guests, setGuests] =
+    useState<any[]>([])
+
+  const [loading, setLoading] =
+    useState(true)
+
+  const [selectedEventName, setSelectedEventName] =
+    useState(
+      "PREMIUM EVENT REPORT"
+    )
+
+  // LOAD DATA
   useEffect(() => {
+
+    const auth =
+      localStorage.getItem(
+        "admin-auth"
+      )
+
+    if (!auth) {
+
+      router.push("/login")
+
+      return
+    }
+
+    const eventName =
+      localStorage.getItem(
+        "selected-event-name"
+      )
+
+    if (eventName) {
+
+      setSelectedEventName(
+        eventName
+      )
+    }
+
     loadGuests()
+
   }, [])
 
+  // LOAD GUESTS
   async function loadGuests() {
-    const { data } = await supabase
-      .from("Convidados")
-      .select("*")
-      .order("created_at", {
-        ascending: false,
-      })
 
-    if (data) {
-      setGuests(data)
+    try {
+
+      // EVENTO ATIVO
+      const selectedEventId =
+        localStorage.getItem(
+          "selected-event-id"
+        )
+
+      // QUERY
+      let query =
+        supabase
+          .from("Convidados")
+          .select("*")
+
+      // FILTER EVENT
+      if (selectedEventId) {
+
+        query =
+          query.eq(
+            "event_id",
+            selectedEventId
+          )
+      }
+
+      // EXECUTE
+      const {
+        data,
+        error,
+      } = await query
+
+      if (error) {
+
+        console.log(error)
+
+        return
+      }
+
+      setGuests(data || [])
+
+      setLoading(false)
+
+    } catch (err) {
+
+      console.log(err)
     }
   }
 
+  // EXPORT PDF
   function exportPDF() {
-    const doc = new jsPDF()
 
-    // HEADER
-    doc.setFontSize(26)
+    const doc =
+      new jsPDF()
+
+    // TITLE
+    doc.setFontSize(36)
 
     doc.text(
-      "RELATORIO DE EVENTO",
+      selectedEventName,
       14,
-      20
+      30
     )
 
-    doc.setFontSize(12)
+    // TOTAL
+    doc.setFontSize(18)
 
     doc.text(
       `Total Convidados: ${guests.length}`,
       14,
-      32
+      55
     )
 
-    const presentes = guests.filter(
-      (g) => g.checked_in === true
-    ).length
-
-    const ausentes =
-      guests.length - presentes
-
-    doc.text(
-      `Presentes: ${presentes}`,
-      14,
-      40
-    )
-
-    doc.text(
-      `Ausentes: ${ausentes}`,
-      14,
-      48
-    )
-
-    // TABELA
+    // TABLE
     autoTable(doc, {
-      startY: 60,
 
-      head: [
-        [
-          "Nome",
-          "Email",
-          "Telefone",
-          "Tipo",
-          "Status",
-          "Entrada",
-        ],
-      ],
+      startY: 75,
 
-      body: guests.map((guest) => [
-        guest.full_name || "-",
-        guest.email || "-",
-        guest.phone || "-",
-        guest.ticket_type || "-",
-        guest.checked_in
-          ? "PRESENTE"
-          : "AUSENTE",
+      head: [[
+        "Nome",
+        "Tipo",
+        "Status",
+        "Evento",
+      ]],
 
-        guest.checkin_time
-          ? new Date(
-              guest.checkin_time
-            ).toLocaleTimeString()
-          : "--:--",
-      ]),
+      body: guests.map(
+        (guest) => [
+
+          guest.full_name,
+
+          guest.ticket_type,
+
+          guest.status,
+
+          guest.event_name,
+        ]
+      ),
 
       styles: {
-        fillColor: [24, 24, 27],
-        textColor: [255, 255, 255],
-        lineColor: [39, 39, 42],
-        lineWidth: 0.2,
+        fontSize: 14,
       },
 
       headStyles: {
-        fillColor: [34, 197, 94],
-        textColor: [0, 0, 0],
-        fontStyle: "bold",
-      },
-
-      alternateRowStyles: {
-        fillColor: [30, 30, 35],
-      },
-
-      bodyStyles: {
-        textColor: [255, 255, 255],
+        fillColor: [52, 128, 185],
       },
     })
 
-    // DOWNLOAD
-    doc.save("relatorio-evento.pdf")
+    // SAVE
+    doc.save(
+      `${selectedEventName}-report.pdf`
+    )
   }
 
-  const presentes = guests.filter(
-    (guest) =>
-      guest.checked_in === true
-  ).length
+  // LOADING
+  if (loading) {
 
-  const ausentes =
-    guests.length - presentes
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+
+        <h1 className="text-5xl font-black">
+          Carregando Relatórios...
+        </h1>
+
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-[#000000] text-[#ffffff] p-10">
-      <div className="max-w-7xl mx-auto">
-        {/* HEADER */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-6xl font-black">
-              Relatorios
-            </h1>
+    <div className="min-h-screen bg-black text-white p-5 lg:p-10">
 
-            <p className="text-zinc-400 mt-2">
-              Sistema Premium de Eventos
-            </p>
-          </div>
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
 
+        <div>
+
+          <p className="text-green-400 tracking-[8px] font-bold text-sm">
+            PREMIUM EVENTS
+          </p>
+
+          <h1 className="text-4xl lg:text-6xl font-black mt-4">
+            Relatórios
+          </h1>
+
+          <p className="text-zinc-400 mt-3">
+            Analytics e Exportações
+          </p>
+
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-4">
+
+          {/* DASHBOARD */}
+          <button
+            onClick={() =>
+              router.push(
+                "/dashboard"
+              )
+            }
+            className="bg-zinc-800 hover:bg-zinc-700 transition rounded-2xl px-8 py-5 font-bold"
+          >
+            ← Dashboard
+          </button>
+
+          {/* EXPORT */}
           <button
             onClick={exportPDF}
-            className="bg-[#22c55e] hover:bg-[#16a34a] text-black px-8 py-4 rounded-2xl text-xl font-bold"
+            className="bg-green-500 hover:bg-green-600 transition rounded-2xl px-8 py-5 font-black text-black text-lg"
           >
             Exportar PDF
           </button>
+
         </div>
 
-        {/* CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
-          <div className="bg-[#18181b] p-6 rounded-3xl border border-zinc-800">
-            <p className="text-zinc-400">
-              Total Convidados
-            </p>
+      </div>
 
-            <h2 className="text-5xl font-bold mt-4">
-              {guests.length}
-            </h2>
-          </div>
+      {/* EVENT */}
+      <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-6 lg:p-8 mt-10">
 
-          <div className="bg-[#18181b] p-6 rounded-3xl border border-zinc-800">
-            <p className="text-zinc-400">
-              Presentes
-            </p>
+        <p className="text-zinc-500">
+          EVENTO SELECIONADO
+        </p>
 
-            <h2 className="text-5xl font-bold mt-4 text-[#4ade80]">
-              {presentes}
-            </h2>
-          </div>
+        <h2 className="text-3xl lg:text-5xl font-black mt-4 text-green-400">
+          {selectedEventName}
+        </h2>
 
-          <div className="bg-[#18181b] p-6 rounded-3xl border border-zinc-800">
-            <p className="text-zinc-400">
-              Ausentes
-            </p>
+      </div>
 
-            <h2 className="text-5xl font-bold mt-4 text-[#f87171]">
-              {ausentes}
-            </h2>
-          </div>
+      {/* STATS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+
+        {/* TOTAL */}
+        <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
+
+          <p className="text-zinc-500">
+            TOTAL CONVIDADOS
+          </p>
+
+          <h2 className="text-5xl font-black mt-4">
+            {guests.length}
+          </h2>
+
         </div>
 
-        {/* TABELA */}
-        <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-6 mt-10 overflow-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="text-left p-4">
-                  Nome
-                </th>
+        {/* PRESENT */}
+        <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
 
-                <th className="text-left p-4">
-                  Email
-                </th>
+          <p className="text-zinc-500">
+            PRESENTES
+          </p>
 
-                <th className="text-left p-4">
-                  Tipo
-                </th>
+          <h2 className="text-5xl font-black mt-4 text-green-400">
 
-                <th className="text-left p-4">
-                  Status
-                </th>
+            {
+              guests.filter(
+                (guest) =>
+                  guest.status ===
+                  "presente"
+              ).length
+            }
 
-                <th className="text-left p-4">
-                  Entrada
-                </th>
-              </tr>
-            </thead>
+          </h2>
 
-            <tbody>
-              {guests.map((guest) => (
+        </div>
+
+        {/* ABSENT */}
+        <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
+
+          <p className="text-zinc-500">
+            AUSENTES
+          </p>
+
+          <h2 className="text-5xl font-black mt-4 text-red-400">
+
+            {
+              guests.filter(
+                (guest) =>
+                  guest.status !==
+                  "presente"
+              ).length
+            }
+
+          </h2>
+
+        </div>
+
+      </div>
+
+      {/* TABLE */}
+      <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-6 lg:p-8 mt-10 overflow-x-auto">
+
+        <table className="w-full min-w-[800px]">
+
+          <thead>
+
+            <tr className="border-b border-zinc-700">
+
+              <th className="text-left py-5">
+                Nome
+              </th>
+
+              <th className="text-left py-5">
+                Tipo
+              </th>
+
+              <th className="text-left py-5">
+                Status
+              </th>
+
+              <th className="text-left py-5">
+                Evento
+              </th>
+
+            </tr>
+
+          </thead>
+
+          <tbody>
+
+            {guests.map(
+              (guest) => (
+
                 <tr
                   key={guest.id}
                   className="border-b border-zinc-800"
                 >
-                  <td className="p-4">
-                    {guest.full_name}
+
+                  <td className="py-5">
+                    {
+                      guest.full_name
+                    }
                   </td>
 
-                  <td className="p-4">
-                    {guest.email}
+                  <td className="py-5">
+                    {
+                      guest.ticket_type
+                    }
                   </td>
 
-                  <td className="p-4">
-                    {guest.ticket_type}
+                  <td className="py-5">
+
+                    <span
+                      className={`
+                        px-4 py-2 rounded-xl font-bold
+
+                        ${
+                          guest.status ===
+                          "presente"
+                            ? "bg-green-500 text-black"
+                            : "bg-yellow-500 text-black"
+                        }
+                      `}
+                    >
+                      {
+                        guest.status
+                      }
+                    </span>
+
                   </td>
 
-                  <td className="p-4">
-                    {guest.checked_in ? (
-                      <span className="text-[#4ade80] font-bold">
-                        PRESENTE
-                      </span>
-                    ) : (
-                      <span className="text-[#f87171] font-bold">
-                        AUSENTE
-                      </span>
-                    )}
+                  <td className="py-5">
+                    {
+                      guest.event_name
+                    }
                   </td>
 
-                  <td className="p-4">
-                    {guest.checkin_time
-                      ? new Date(
-                          guest.checkin_time
-                        ).toLocaleTimeString()
-                      : "--:--"}
-                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              )
+            )}
+
+          </tbody>
+
+        </table>
+
       </div>
     </div>
   )

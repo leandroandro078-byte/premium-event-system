@@ -1,328 +1,395 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts"
-
 export default function DashboardPage() {
-  const [events, setEvents] = useState(0)
-  const [guests, setGuests] = useState(0)
-  const [present, setPresent] = useState(0)
 
-  const [vip, setVip] = useState(0)
-  const [normal, setNormal] = useState(0)
-  const [staff, setStaff] = useState(0)
+  const router = useRouter()
 
-  const [latestCheckins, setLatestCheckins] =
+  const [guests, setGuests] =
     useState<any[]>([])
 
+  const [eventName, setEventName] =
+    useState("")
+
+  const [loading, setLoading] =
+    useState(true)
+
+  // LOAD
   useEffect(() => {
-    loadDashboard()
+
+    const auth =
+      localStorage.getItem(
+        "admin-auth"
+      )
+
+    if (!auth) {
+
+      router.push("/login")
+
+      return
+    }
+
+    const selectedEventName =
+      localStorage.getItem(
+        "selected-event-name"
+      )
+
+    if (selectedEventName) {
+
+      setEventName(
+        selectedEventName
+      )
+    }
+
+    loadGuests()
 
     // REALTIME
-    const channel = supabase
-      .channel("dashboard-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "Convidados",
-        },
-        () => {
-          loadDashboard()
-        }
-      )
-      .subscribe()
+    const channel =
+      supabase
+        .channel(
+          "dashboard-realtime"
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "Convidados",
+          },
+          () => {
+
+            loadGuests()
+          }
+        )
+        .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+
+      supabase.removeChannel(
+        channel
+      )
     }
+
   }, [])
 
-  async function loadDashboard() {
-    // EVENTOS
-    const { data: eventsData } = await supabase
-      .from("Eventos")
-      .select("*")
+  // LOAD GUESTS
+  async function loadGuests() {
 
-    setEvents(eventsData?.length || 0)
+    try {
 
-    // CONVIDADOS
-    const { data: guestsData } = await supabase
-      .from("Convidados")
-      .select("*")
-      .order("created_at", {
-        ascending: false,
-      })
-
-    setGuests(guestsData?.length || 0)
-
-    // PRESENTES
-    const presentGuests =
-      guestsData?.filter(
-        (guest) => guest.checked_in === true
-      ) || []
-
-    setPresent(presentGuests.length)
-
-    // VIP
-    const vipGuests =
-      presentGuests.filter(
-        (guest) => guest.ticket_type === "VIP"
-      ) || []
-
-    setVip(vipGuests.length)
-
-    // NORMAL
-    const normalGuests =
-      presentGuests.filter(
-        (guest) => guest.ticket_type === "NORMAL"
-      ) || []
-
-    setNormal(normalGuests.length)
-
-    // STAFF
-    const staffGuests =
-      presentGuests.filter(
-        (guest) => guest.ticket_type === "STAFF"
-      ) || []
-
-    setStaff(staffGuests.length)
-
-    // ÚLTIMOS CHECKINS
-    const latest =
-      presentGuests
-        .sort(
-          (a, b) =>
-            new Date(
-              b.checkin_time
-            ).getTime() -
-            new Date(
-              a.checkin_time
-            ).getTime()
+      const selectedEventId =
+        localStorage.getItem(
+          "selected-event-id"
         )
-        .slice(0, 5) || []
 
-    setLatestCheckins(latest)
+      let query =
+        supabase
+          .from("Convidados")
+          .select("*")
+
+      if (selectedEventId) {
+
+        query =
+          query.eq(
+            "event_id",
+            selectedEventId
+          )
+      }
+
+      const {
+        data,
+        error,
+      } = await query
+
+      if (error) {
+
+        console.log(error)
+
+        return
+      }
+
+      setGuests(data || [])
+
+      setLoading(false)
+
+    } catch (err) {
+
+      console.log(err)
+    }
   }
 
-  const chartData = [
-    {
-      name: "VIP",
-      total: vip,
-    },
-    {
-      name: "NORMAL",
-      total: normal,
-    },
-    {
-      name: "STAFF",
-      total: staff,
-    },
-  ]
+  // STATS
+  const totalGuests =
+    guests.length
 
-  const pieData = [
-    {
-      name: "Presentes",
-      value: present,
-    },
-    {
-      name: "Ausentes",
-      value: guests - present,
-    },
-  ]
+  const checkedIn =
+    guests.filter(
+      (guest) =>
+        guest.checked_in
+    ).length
+
+  const vipGuests =
+    guests.filter(
+      (guest) =>
+        guest.ticket_type ===
+        "VIP"
+    ).length
+
+  // LOADING
+  if (loading) {
+
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+
+        <h1 className="text-5xl font-black">
+          Carregando Dashboard...
+        </h1>
+
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-black text-white p-10">
-      <h1 className="text-6xl font-bold">
-        Dashboard Admin
-      </h1>
+    <div className="min-h-screen bg-black text-white flex">
 
-      <p className="text-zinc-400 mt-2">
-        Sistema Premium de Gestão de Eventos
-      </p>
+      {/* SIDEBAR */}
+      <aside className="w-[300px] bg-[#0f0f13] border-r border-zinc-800 p-7 flex flex-col justify-between">
 
-      {/* CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-10">
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <p className="text-zinc-400">
-            Eventos
-          </p>
+        <div>
 
-          <h2 className="text-5xl font-bold mt-4">
-            {events}
-          </h2>
-        </div>
+          <div>
 
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <p className="text-zinc-400">
-            Convidados
-          </p>
+            <p className="text-green-400 tracking-[8px] text-sm font-bold">
+              PREMIUM
+            </p>
 
-          <h2 className="text-5xl font-bold mt-4">
-            {guests}
-          </h2>
-        </div>
+            <h1 className="text-5xl font-black mt-5 leading-none">
+              Events
+            </h1>
 
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <p className="text-zinc-400">
-            Presentes
-          </p>
+            <p className="text-zinc-500 mt-4">
+              Admin Panel
+            </p>
 
-          <h2 className="text-5xl font-bold mt-4 text-green-400">
-            {present}
-          </h2>
-        </div>
+          </div>
 
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <p className="text-zinc-400">
-            Ausentes
-          </p>
+          {/* MENU */}
+          <div className="space-y-4 mt-16">
 
-          <h2 className="text-5xl font-bold mt-4 text-red-400">
-            {guests - present}
-          </h2>
-        </div>
-      </div>
-
-      {/* CHARTS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10">
-        {/* BAR CHART */}
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <h2 className="text-3xl font-bold mb-6">
-            Tipos de Bilhetes
-          </h2>
-
-          <ResponsiveContainer
-            width="100%"
-            height={300}
-          >
-            <BarChart data={chartData}>
-              <XAxis dataKey="name" />
-
-              <YAxis />
-
-              <Tooltip />
-
-              <Bar
-                dataKey="total"
-                fill="#00ff66"
-                radius={[10, 10, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* PIE CHART */}
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <h2 className="text-3xl font-bold mb-6">
-            Presença do Evento
-          </h2>
-
-          <ResponsiveContainer
-            width="100%"
-            height={300}
-          >
-            <PieChart>
-              <Pie
-                data={pieData}
-                dataKey="value"
-                outerRadius={120}
-                label
-              >
-                <Cell fill="#00ff66" />
-
-                <Cell fill="#ff3333" />
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* ESTATÍSTICAS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <p className="text-zinc-400">
-            VIP Presentes
-          </p>
-
-          <h2 className="text-4xl font-bold mt-4 text-yellow-400">
-            {vip}
-          </h2>
-        </div>
-
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <p className="text-zinc-400">
-            NORMAL Presentes
-          </p>
-
-          <h2 className="text-4xl font-bold mt-4 text-blue-400">
-            {normal}
-          </h2>
-        </div>
-
-        <div className="bg-zinc-900 p-6 rounded-2xl">
-          <p className="text-zinc-400">
-            STAFF Presentes
-          </p>
-
-          <h2 className="text-4xl font-bold mt-4 text-purple-400">
-            {staff}
-          </h2>
-        </div>
-      </div>
-
-      {/* ÚLTIMOS CHECKINS */}
-      <div className="bg-zinc-900 p-6 rounded-2xl mt-10">
-        <h2 className="text-3xl font-bold mb-6">
-          Últimos Check-ins
-        </h2>
-
-        <div className="space-y-4">
-          {latestCheckins.map((guest) => (
-            <div
-              key={guest.id}
-              className="bg-black p-4 rounded-xl border border-zinc-800"
+            <button
+              className="w-full bg-green-500 text-black font-black p-5 rounded-2xl text-left"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-xl">
-                    {guest.full_name}
-                  </p>
+              Dashboard
+            </button>
 
-                  <p className="text-zinc-400">
-                    {guest.ticket_type}
-                  </p>
-                </div>
+            <button
+              onClick={() =>
+                router.push(
+                  "/guests"
+                )
+              }
+              className="w-full bg-[#18181b] hover:bg-zinc-800 transition p-5 rounded-2xl text-left font-bold"
+            >
+              Convidados
+            </button>
 
-                <div className="text-right">
-                  <p className="text-green-400 font-bold">
-                    PRESENTE
-                  </p>
+            <button
+              onClick={() =>
+                router.push(
+                  "/checkin"
+                )
+              }
+              className="w-full bg-[#18181b] hover:bg-zinc-800 transition p-5 rounded-2xl text-left font-bold"
+            >
+              Check-in
+            </button>
 
-                  <p className="text-zinc-500 text-sm">
-                    {new Date(
-                      guest.checkin_time
-                    ).toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
+            <button
+              onClick={() =>
+                router.push(
+                  "/reports"
+                )
+              }
+              className="w-full bg-[#18181b] hover:bg-zinc-800 transition p-5 rounded-2xl text-left font-bold"
+            >
+              Relatórios
+            </button>
+
+            <button
+              onClick={() =>
+                router.push(
+                  "/events"
+                )
+              }
+              className="w-full bg-[#18181b] hover:bg-zinc-800 transition p-5 rounded-2xl text-left font-bold"
+            >
+              Eventos
+            </button>
+
+          </div>
+
         </div>
-      </div>
+
+        {/* LOGOUT */}
+        <button
+          onClick={() => {
+
+            localStorage.removeItem(
+              "admin-auth"
+            )
+
+            router.push("/login")
+          }}
+          className="bg-red-500 hover:bg-red-600 transition p-5 rounded-2xl font-black"
+        >
+          Logout
+        </button>
+
+      </aside>
+
+      {/* CONTENT */}
+      <main className="flex-1 p-10">
+
+        {/* HEADER */}
+        <div className="flex items-start justify-between">
+
+          <div>
+
+            <h1 className="text-7xl font-black">
+              Dashboard
+            </h1>
+
+            <p className="text-zinc-400 text-2xl mt-5">
+              {eventName}
+            </p>
+
+          </div>
+
+          <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
+
+            <p className="text-zinc-400">
+              STATUS
+            </p>
+
+            <h2 className="text-green-400 text-4xl font-black mt-3">
+              ONLINE
+            </h2>
+
+          </div>
+
+        </div>
+
+        {/* CARDS */}
+        <div className="grid grid-cols-4 gap-6 mt-16">
+
+          {/* EVENTS */}
+          <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
+
+            <p className="text-zinc-400 text-2xl">
+              Eventos
+            </p>
+
+            <h2 className="text-8xl font-black mt-8">
+              1
+            </h2>
+
+          </div>
+
+          {/* GUESTS */}
+          <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
+
+            <p className="text-zinc-400 text-2xl">
+              Convidados
+            </p>
+
+            <h2 className="text-green-400 text-8xl font-black mt-8">
+              {totalGuests}
+            </h2>
+
+          </div>
+
+          {/* CHECKINS */}
+          <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
+
+            <p className="text-zinc-400 text-2xl">
+              Check-ins
+            </p>
+
+            <h2 className="text-blue-400 text-8xl font-black mt-8">
+              {checkedIn}
+            </h2>
+
+          </div>
+
+          {/* VIP */}
+          <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-8">
+
+            <p className="text-zinc-400 text-2xl">
+              VIPs
+            </p>
+
+            <h2 className="text-yellow-400 text-8xl font-black mt-8">
+              {vipGuests}
+            </h2>
+
+          </div>
+
+        </div>
+
+        {/* SYSTEM STATUS */}
+        <div className="bg-[#18181b] border border-zinc-800 rounded-3xl p-10 mt-10">
+
+          <h2 className="text-5xl font-black">
+            Sistema Operacional
+          </h2>
+
+          <div className="grid grid-cols-3 gap-6 mt-10">
+
+            <div className="bg-black border border-zinc-800 rounded-2xl p-8">
+
+              <p className="text-zinc-500">
+                API
+              </p>
+
+              <h3 className="text-green-400 text-4xl font-black mt-5">
+                ONLINE
+              </h3>
+
+            </div>
+
+            <div className="bg-black border border-zinc-800 rounded-2xl p-8">
+
+              <p className="text-zinc-500">
+                Supabase
+              </p>
+
+              <h3 className="text-green-400 text-4xl font-black mt-5">
+                REALTIME
+              </h3>
+
+            </div>
+
+            <div className="bg-black border border-zinc-800 rounded-2xl p-8">
+
+              <p className="text-zinc-500">
+                Vercel
+              </p>
+
+              <h3 className="text-green-400 text-4xl font-black mt-5">
+                ONLINE
+              </h3>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </main>
+
     </div>
   )
 }
